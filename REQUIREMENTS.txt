@@ -1,0 +1,28 @@
+Node.js 18+
+Astra DB Serverless account (free tier)
+Git + GitHub account (for Render deploy)
+
+Environment variables (server):
+- ASTRA_DB_APPLICATION_TOKEN
+- ASTRA_DB_API_ENDPOINT
+- ASTRA_DB_COLLECTION_NAME
+- GOOGLE_GENAI_API_KEY
+- NASA_API_KEY
+- PORT (optional; Render sets automatically)
+
+Local dev commands:
+- npm install
+- npm run dev (uses .env)
+- npm start (no .env, for production-like)
+
+Deployment (Render):
+- Build Command: npm install
+- Start Command: npm start
+- Health Check Path: /api/health
+
+Testing:
+- GET /api/health
+- POST /api/rag {"query":"..."}
+- POST /api/index/pdf (multipart/form-data file)
+- POST /api/index/url {"url":"https://..."}
+- GET /api/nasa/apod?date=today|tomorrow|YYYY-MM-DD

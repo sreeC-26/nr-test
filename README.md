@@ -94,3 +94,49 @@ Content-Type: application/json
   - `indexPage` to index a URL
   - `rag` to query with optional extra context
   - PDF indexing is exposed via REST.
+
+## Deployment (Render)
+
+1) Push this repo to your GitHub account (do not commit `.env`).
+
+2) On Render → New → Web Service → connect the repo.
+
+3) Settings
+- Branch: `main`
+- Instance Type: `Free`
+- Build Command: `npm install`
+- Start Command: `npm start` (IMPORTANT)
+- Health Check Path: `/api/health`
+
+4) Environment Variables (Render Dashboard → Environment)
+- `ASTRA_DB_APPLICATION_TOKEN`
+- `ASTRA_DB_API_ENDPOINT`
+- `ASTRA_DB_COLLECTION_NAME`
+- `GOOGLE_GENAI_API_KEY`
+- `NASA_API_KEY`
+- `PORT` (Render sets automatically; optional)
+
+5) Deploy, then test:
+```
+curl -X GET  https://<your-app>.onrender.com/api/health
+curl -X POST https://<your-app>.onrender.com/api/rag \
+  -H "Content-Type: application/json" \
+  -d '{"query":"When was NASA formed"}'
+```
+
+## Features
+- Astra DB vector store via `genkitx-astra-db`
+- Gemini text embeddings and generation
+- URL extraction → chunk → index
+- PDF ingestion via API and batch CLI
+- NASA APOD enrichment built into `/api/rag` for APOD-like queries
+
+## Batch index PDFs
+```
+npm run index:pdfs -- ./path/to/folder
+```
+
+## Security notes
+- Do not expose indexing endpoints to untrusted users in production.
+- Keep API keys in server-side env vars; never ship to clients.
+- Consider adding auth (e.g., Firebase Auth ID tokens) and validate on `/api/rag`.
