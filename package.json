@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "tsx --env-file .env ./index.ts",
-    "genkit": "genkit start -- npm start"
+    "start": "tsx --env-file .env ./server.ts",
+    "dev": "tsx --env-file .env ./server.ts",
+    "genkit": "genkit start -- npm run dev",
+    "index:pdfs": "tsx --env-file .env ./batchIndex.ts"
   },
   "keywords": [],
   "author": "Phil Nash <phil.nash@datastax.com> (https://www.datastax.com/)",
@@ -13,13 +15,23 @@
   "dependencies": {
     "@genkit-ai/googleai": "^1.4.0",
     "@mozilla/readability": "^0.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
     "genkit": "^1.4.0",
     "genkitx-astra-db": "^0.3.0",
-    "jsdom": "^26.0.0",
-    "llm-chunk": "^0.0.1"
+    "jsdom": "^26.1.0",
+    "llm-chunk": "^0.0.1",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "undici": "^6.19.8"
   },
   "devDependencies": {
     "genkit-cli": "^1.4.0",
-    "tsx": "^4.19.3"
+    "tsx": "^4.19.3",
+    "@types/node": "^22.7.5",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/jsdom": "^21.1.7",
+    "@types/cors": "^2.8.17"
   }
 }

@@ -11,7 +11,7 @@ import { chunk } from "llm-chunk";
 
 const collectionName = process.env.ASTRA_DB_COLLECTION_NAME!;
 
-const ai = genkit({
+export const ai = genkit({
   plugins: [
     googleAI(),
     astraDB([
@@ -63,13 +63,21 @@ export const indexWebPage = ai.defineFlow(
 );
 
 export const ragFlow = ai.defineFlow(
-  { name: "rag", inputSchema: z.string(), outputSchema: z.string() },
-  async (input: string) => {
-    const docs = await ai.retrieve({
+  {
+    name: "rag",
+    inputSchema: z.object({ query: z.string(), extraContext: z.string().optional() }),
+    outputSchema: z.string(),
+  },
+  async ({ query, extraContext }) => {
+    const retrievedDocs = await ai.retrieve({
       retriever: astraDBRetriever,
-      query: input,
+      query,
       options: { k: 3 },
     });
+
+    const docs = extraContext
+      ? [Document.fromText(extraContext, { source: "extra" }), ...retrievedDocs]
+      : retrievedDocs;
 
     const { text } = await ai.generate({
       model: gemini20Flash,
@@ -79,10 +87,19 @@ You are a helpful AI assistant that can answer questions.
 Use only the context provided to answer the question.
 If you don't know, do not make up an answer.
 
-Question: ${input}`,
+Question: ${query}`,
       docs,
     });
 
     return text;
   }
 );
+
+export async function indexPlainText(text: string, metadata: Record<string, string>) {
+  const chunks = await ai.run("chunk-it", async () =>
+    chunk(text, { minLength: 128, maxLength: 1024, overlap: 128 })
+  );
+
+  const documents = chunks.map((textChunk) => Document.fromText(textChunk, metadata));
+  return ai.index({ indexer: astraDBIndexer, documents });
+}
