@@ -9,6 +9,26 @@ This is an example of using [DataStax Astra DB](https://www.datastax.com/product
   - Create a DB and collection, then set env vars below.
 - (Optional) NASA API key for enrichment
 
+## One-time installation (cloned repo)
+
+Clone this repo, then install all dependencies (runtime + type packages already listed in `package.json`):
+
+```
+git clone <your-fork-or-repo-url>
+cd genkit-astra-db-rag
+npm install
+```
+
+What this installs:
+- `genkit`, `@genkit-ai/googleai` (Gemini models + embeddings)
+- `genkitx-astra-db` (Astra DB indexer/retriever)
+- `express`, `cors`, `multer` (server + uploads)
+- `pdf-parse` (PDF text extraction)
+- `jsdom`, `@mozilla/readability` (URL content extraction)
+- `undici` (HTTP client)
+- `tsx` (run TypeScript directly)
+- Dev types: `@types/node`, `@types/express`, `@types/multer`, `@types/jsdom`, and local `types.d.ts`
+
 ## Environment variables
 
 Create a `.env` file with:
@@ -46,6 +66,8 @@ npm start
 - REST API runs at `http://localhost:4000`
 - Genkit UI proxies your app, open `http://localhost:4000`
 
+If you see IDE type squigglies, restart the TypeScript server in VS Code (Command Palette → “TypeScript: Restart TS server”).
+
 ## REST API
 
 ### Health
@@ -75,12 +97,12 @@ Batch index PDFs from a local folder:
 npm run index:pdfs -- ./path/to/folder
 ```
 
-### RAG query (optional NASA enrichment)
+### RAG query (NASA auto-enrichment for APOD-like queries)
 
 ```
 POST /api/rag
 Content-Type: application/json
-{ "query": "What is...", "nasa": true, "date": "2024-01-01" }
+{ "query": "What is..." }
 ```
 
 ## Flutter integration
@@ -88,12 +110,25 @@ Content-Type: application/json
 - Use standard HTTP client in Flutter to call the above endpoints.
 - For uploads, use `multipart/form-data` with `file` field.
 
-## Notes
+## File and function overview
 
-- This project continues to work with Genkit UI flows:
-  - `indexPage` to index a URL
-  - `rag` to query with optional extra context
-  - PDF indexing is exposed via REST.
+- `index.ts`
+  - Initializes Genkit with Google AI and Astra DB plugins.
+  - Embeddings: `text-embedding-004`; Generation: `gemini-2.0-flash`.
+  - Exports `ai`, `astraDBIndexer`, `astraDBRetriever`.
+  - `indexWebPage(url)`: fetch + extract readable text, chunk, index.
+  - `ragFlow({ query, extraContext? })`: retrieve from Astra DB, add optional context, generate answer.
+  - `indexPlainText(text, metadata)`: chunk + index helper.
+
+- `server.ts`
+  - Express API: health, URL/PDF indexing, NASA APOD fetch, and RAG endpoint.
+  - `/api/rag` auto-detects APOD-like queries, parses dates (today/tomorrow/natural formats), and enriches with APOD.
+
+- `batchIndex.ts`
+  - Batch index all PDFs in a folder: `npm run index:pdfs -- ./path`
+
+- `tsconfig.json` and `types.d.ts`
+  - TS configuration and ambient types to smooth local development.
 
 ## Deployment (Render)
 
@@ -122,6 +157,38 @@ curl -X GET  https://<your-app>.onrender.com/api/health
 curl -X POST https://<your-app>.onrender.com/api/rag \
   -H "Content-Type: application/json" \
   -d '{"query":"When was NASA formed"}'
+```
+
+## Local testing (Windows Command Prompt)
+
+Health:
+```
+curl.exe http://localhost:4000/api/health
+```
+
+RAG (answer from your indexed PDFs):
+```
+curl.exe -X POST http://localhost:4000/api/rag -H "Content-Type: application/json" -d "{\"query\":\"When was NASA formed\"}"
+```
+
+APOD-like (auto NASA enrichment, returns image URL in response.apod):
+```
+curl.exe -X POST http://localhost:4000/api/rag -H "Content-Type: application/json" -d "{\"query\":\"What would the galaxy look like on 12 September 2025?\"}"
+```
+
+Index a public URL:
+```
+curl.exe -X POST http://localhost:4000/api/index/url -H "Content-Type: application/json" -d "{\"url\":\"https://example.com/article\"}"
+```
+
+Index a local PDF (multipart/form-data):
+```
+curl.exe -X POST http://localhost:4000/api/index/pdf -F "file=@C:\\absolute\\path\\file.pdf"
+```
+
+Batch index all PDFs in a folder:
+```
+npm run index:pdfs -- ./path/to/folder
 ```
 
 ## Features
