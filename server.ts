@@ -197,7 +197,16 @@ app.post("/api/rag", async (req, res) => {
 
     const mergedContext = [extraContext, nasaContext].filter(Boolean).join("\n\n");
     const answer = await ragFlow.run({ query, extraContext: mergedContext || undefined });
-    res.json({ ok: true, answer, apod });
+    
+    // Return only essential APOD info for display, not the full content
+    const displayApod = apod ? {
+      title: apod.title,
+      date: apod.date,
+      url: apod.url,
+      hdurl: apod.hdurl
+    } : undefined;
+    
+    res.json({ ok: true, answer, apod: displayApod });
   } catch (err: any) {
     res.status(400).json({ ok: false, error: err?.message || "Invalid request" });
   }
