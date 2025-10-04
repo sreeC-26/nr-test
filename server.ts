@@ -190,9 +190,9 @@ app.post("/api/rag", async (req, res) => {
       const resolvedDate = resolveApodDateAlias(date) ?? parseNaturalDate(query);
       apod = await fetchNasaApod(apiKey, resolvedDate);
       const imageUrl = apod.hdurl || apod.url || "";
-      // Limit APOD explanation to 4 lines
-      const explanationLines = apod.explanation.split('\n').slice(0, 4).join('\n');
-      nasaContext = `NASA APOD Title: ${apod.title}\nDate: ${apod.date}\nImage: ${imageUrl}\nExplanation: ${explanationLines}`;
+      // Create a brief summary of APOD content (max 2 sentences)
+      const briefSummary = apod.explanation.split('. ').slice(0, 2).join('. ') + '.';
+      nasaContext = `NASA APOD: ${apod.title} (${apod.date})\nImage: ${imageUrl}\nBrief: ${briefSummary}`;
     }
 
     const mergedContext = [extraContext, nasaContext].filter(Boolean).join("\n\n");
