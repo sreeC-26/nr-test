@@ -20,13 +20,13 @@ async function main() {
   }
   const abs = path.resolve(folder);
   const entries = await fs.promises.readdir(abs, { withFileTypes: true });
-  const pdfs = entries
+  const files = entries
     .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".pdf"))
     .map((e) => path.join(abs, e.name));
-  console.log(`Found ${pdfs.length} PDFs in ${abs}`);
+  console.log(`Found ${files.length} PDFs in ${abs}`);
 
   let ok = 0;
-  for (const file of pdfs) {
+  for (const file of files) {
     try {
       const res = await indexPdfFile(file);
       ok++;
@@ -36,7 +36,7 @@ async function main() {
     }
   }
 
-  console.log(`Done. Indexed ${ok}/${pdfs.length} PDFs.`);
+  console.log(`Done. Indexed ${ok}/${files.length} PDFs.`);
 }
 
 main().catch((e) => {

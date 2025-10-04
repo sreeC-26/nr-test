@@ -191,6 +191,7 @@ Batch index all PDFs in a folder:
 npm run index:pdfs -- ./path/to/folder
 ```
 
+
 ## Features
 - Astra DB vector store via `genkitx-astra-db`
 - Gemini text embeddings and generation

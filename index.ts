@@ -48,10 +48,18 @@ export const indexWebPage = ai.defineFlow(
     const text = await ai.run("extract-text", () => fetchTextFromWeb(url));
 
     const chunks = await ai.run("chunk-it", async () =>
-      chunk(text, { minLength: 128, maxLength: 1024, overlap: 128 })
+      chunk(text, { minLength: 128, maxLength: 512, overlap: 64 })
     );
 
-    const documents = chunks.map((text) => {
+    // Filter out chunks that exceed 8000 bytes (Astra DB limit)
+    const validChunks = chunks.filter(chunk => Buffer.byteLength(chunk, 'utf8') <= 8000);
+    
+    if (validChunks.length === 0) {
+      console.warn(`All chunks for ${url} exceed size limit, skipping`);
+      return;
+    }
+
+    const documents = validChunks.map((text) => {
       return Document.fromText(text, { url });
     });
 
@@ -87,6 +95,8 @@ You are a helpful AI assistant that can answer questions.
 Use only the context provided to answer the question.
 If you don't know, do not make up an answer.
 
+IMPORTANT: Keep your answer to a maximum of 4 lines. Be concise and direct.
+
 Question: ${query}`,
       docs,
     });
@@ -97,9 +107,17 @@ Question: ${query}`,
 
 export async function indexPlainText(text: string, metadata: Record<string, string>) {
   const chunks = await ai.run("chunk-it", async () =>
-    chunk(text, { minLength: 128, maxLength: 1024, overlap: 128 })
+    chunk(text, { minLength: 128, maxLength: 512, overlap: 64 })
   );
 
-  const documents = chunks.map((textChunk) => Document.fromText(textChunk, metadata));
+  // Filter out chunks that exceed 8000 bytes (Astra DB limit)
+  const validChunks = chunks.filter(chunk => Buffer.byteLength(chunk, 'utf8') <= 8000);
+  
+  if (validChunks.length === 0) {
+    console.warn(`All chunks for ${metadata.filename || 'document'} exceed size limit, skipping`);
+    return;
+  }
+
+  const documents = validChunks.map((textChunk) => Document.fromText(textChunk, metadata));
   return ai.index({ indexer: astraDBIndexer, documents });
 }

@@ -44,6 +44,7 @@ app.post("/api/index/pdf", upload.single("file"), async (req, res) => {
   }
 });
 
+
 // NASA helper: simple APOD fetch
 type NasaApod = {
   title: string;
@@ -89,20 +90,24 @@ function parseNaturalDate(text?: string): string | undefined {
     d.setUTCDate(d.getUTCDate() - 1);
     return d.toISOString().slice(0, 10);
   }
-  // Match formats like: 12 September 2025, 12th September 2025, September 12, 2025
+  
   const months = [
     "january","february","march","april","may","june","july","august","september","october","november","december"
   ];
-  const m = lower.match(/(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)[,\s]+(\d{4})/);
-  if (m) {
-    const day = parseInt(m[1], 10);
-    const monthIndex = months.indexOf(m[3]);
-    const year = parseInt(m[4], 10);
+  
+  // Pattern 1: 12th September 2025, 12 September 2025, 12th september 2025
+  const m1 = lower.match(/(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)[,\s]+(\d{4})/);
+  if (m1) {
+    const day = parseInt(m1[1], 10);
+    const monthIndex = months.indexOf(m1[3]);
+    const year = parseInt(m1[4], 10);
     if (monthIndex >= 0) {
       const d = new Date(Date.UTC(year, monthIndex, day));
       return d.toISOString().slice(0, 10);
     }
   }
+  
+  // Pattern 2: September 12, 2025, september 12th 2025
   const m2 = lower.match(/(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?[,\s]+(\d{4})/);
   if (m2) {
     const monthIndex = months.indexOf(m2[1]);
@@ -113,9 +118,35 @@ function parseNaturalDate(text?: string): string | undefined {
       return d.toISOString().slice(0, 10);
     }
   }
-  // ISO-like
+  
+  // Pattern 3: 2025 12 September, 2025 September 12, 2025 12th september
+  const m3 = lower.match(/(\d{4})\s+(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)/);
+  if (m3) {
+    const year = parseInt(m3[1], 10);
+    const day = parseInt(m3[2], 10);
+    const monthIndex = months.indexOf(m3[4]);
+    if (monthIndex >= 0) {
+      const d = new Date(Date.UTC(year, monthIndex, day));
+      return d.toISOString().slice(0, 10);
+    }
+  }
+  
+  // Pattern 4: 2025 September 12, 2025 september 12th
+  const m4 = lower.match(/(\d{4})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?/);
+  if (m4) {
+    const year = parseInt(m4[1], 10);
+    const monthIndex = months.indexOf(m4[2]);
+    const day = parseInt(m4[3], 10);
+    if (monthIndex >= 0) {
+      const d = new Date(Date.UTC(year, monthIndex, day));
+      return d.toISOString().slice(0, 10);
+    }
+  }
+  
+  // ISO-like: 2025-09-12
   const iso = lower.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  
   return undefined;
 }
 
@@ -147,8 +178,8 @@ app.get("/api/nasa/apod", async (req, res) => {
 // RAG query with automatic NASA enrichment
 app.post("/api/rag", async (req, res) => {
   try {
-    const schema = z.object({ query: z.string(), date: z.string().optional() });
-    const { query, date } = schema.parse(req.body);
+    const schema = z.object({ query: z.string(), date: z.string().optional(), extraContext: z.string().optional() });
+    const { query, date, extraContext } = schema.parse(req.body);
 
     let nasaContext = "";
     let apod: NasaApod | undefined;
@@ -159,10 +190,13 @@ app.post("/api/rag", async (req, res) => {
       const resolvedDate = resolveApodDateAlias(date) ?? parseNaturalDate(query);
       apod = await fetchNasaApod(apiKey, resolvedDate);
       const imageUrl = apod.hdurl || apod.url || "";
-      nasaContext = `NASA APOD Title: ${apod.title}\nDate: ${apod.date}\nImage: ${imageUrl}\nExplanation: ${apod.explanation}`;
+      // Limit APOD explanation to 4 lines
+      const explanationLines = apod.explanation.split('\n').slice(0, 4).join('\n');
+      nasaContext = `NASA APOD Title: ${apod.title}\nDate: ${apod.date}\nImage: ${imageUrl}\nExplanation: ${explanationLines}`;
     }
 
-    const answer = await ragFlow.run({ query, extraContext: nasaContext || undefined });
+    const mergedContext = [extraContext, nasaContext].filter(Boolean).join("\n\n");
+    const answer = await ragFlow.run({ query, extraContext: mergedContext || undefined });
     res.json({ ok: true, answer, apod });
   } catch (err: any) {
     res.status(400).json({ ok: false, error: err?.message || "Invalid request" });
