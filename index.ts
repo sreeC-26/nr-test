@@ -5,8 +5,6 @@ import {
   astraDBRetrieverRef,
   astraDB,
 } from "genkitx-astra-db";
-import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
 import { chunk } from "llm-chunk";
 
 const collectionName = process.env.ASTRA_DB_COLLECTION_NAME!;
@@ -30,45 +28,6 @@ export const ai = genkit({
 export const astraDBIndexer = astraDBIndexerRef({ collectionName });
 export const astraDBRetriever = astraDBRetrieverRef({ collectionName });
 
-async function fetchTextFromWeb(url: string) {
-  const html = await fetch(url).then((res) => res.text());
-  const doc = new JSDOM(html, { url });
-  const reader = new Readability(doc.window.document);
-  const article = reader.parse();
-  return article?.textContent || "";
-}
-
-export const indexWebPage = ai.defineFlow(
-  {
-    name: "indexPage",
-    inputSchema: z.string().url().describe("URL"),
-    outputSchema: z.void(),
-  },
-  async (url: string) => {
-    const text = await ai.run("extract-text", () => fetchTextFromWeb(url));
-
-    const chunks = await ai.run("chunk-it", async () =>
-      chunk(text, { minLength: 128, maxLength: 512, overlap: 64 })
-    );
-
-    // Filter out chunks that exceed 8000 bytes (Astra DB limit)
-    const validChunks = chunks.filter(chunk => Buffer.byteLength(chunk, 'utf8') <= 8000);
-    
-    if (validChunks.length === 0) {
-      console.warn(`All chunks for ${url} exceed size limit, skipping`);
-      return;
-    }
-
-    const documents = validChunks.map((text) => {
-      return Document.fromText(text, { url });
-    });
-
-    return await ai.index({
-      indexer: astraDBIndexer,
-      documents,
-    });
-  }
-);
 
 export const ragFlow = ai.defineFlow(
   {
@@ -95,7 +54,10 @@ You are a helpful AI assistant that can answer questions.
 Use only the context provided to answer the question.
 If you don't know, do not make up an answer.
 
-IMPORTANT: Keep your answer to a maximum of 4 lines. Be concise and direct.
+IMPORTANT: 
+- Keep your answer to a maximum of 4 lines. Be concise and direct.
+- If the APOD doesn't have an image available yet, mention that the image is not yet available.
+- Focus on the factual content from the APOD explanation.
 
 Question: ${query}`,
       docs,

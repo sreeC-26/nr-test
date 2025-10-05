@@ -1,8 +1,6 @@
 import express from "express";
 import cors from "cors";
-import multer from "multer";
-import pdf from "pdf-parse";
-import { ai, indexWebPage, ragFlow, indexPlainText } from "./index";
+import { ai, ragFlow } from "./index";
 import { z } from "genkit";
 import { request } from "undici";
 
@@ -10,39 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 // Root helper
 app.get("/", (_req, res) => res.send("RAG server running. Try GET /api/health"));
 
 // Health
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
-// Index a URL
-app.post("/api/index/url", async (req, res) => {
-  try {
-    const schema = z.object({ url: z.string().url() });
-    const { url } = schema.parse(req.body);
-    await indexWebPage.run(url);
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(400).json({ ok: false, error: err?.message || "Invalid request" });
-  }
-});
-
-// Index a PDF
-app.post("/api/index/pdf", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded" });
-    }
-    const data: any = await pdf(req.file.buffer);
-    await indexPlainText((data?.text as string) || "", { filename: req.file.originalname });
-    res.json({ ok: true, pages: (data?.numpages as number) ?? null });
-  } catch (err: any) {
-    res.status(500).json({ ok: false, error: err?.message || "Failed to index PDF" });
-  }
-});
 
 
 // NASA helper: simple APOD fetch
@@ -66,30 +37,12 @@ async function fetchNasaApod(apiKey: string, date?: string): Promise<NasaApod> {
 
 function resolveApodDateAlias(input?: string): string | undefined {
   if (!input) return undefined; // today by default (NASA APOD default)
-  const lower = input.toLowerCase();
-  if (lower === "today") return undefined; // let API default to today
-  if (lower === "tomorrow") {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() + 1);
-    return d.toISOString().slice(0, 10);
-  }
   return input; // assume YYYY-MM-DD
 }
 
 function parseNaturalDate(text?: string): string | undefined {
   if (!text) return undefined;
   const lower = text.toLowerCase();
-  if (/(today)/.test(lower)) return undefined;
-  if (/(tomorrow)/.test(lower)) {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() + 1);
-    return d.toISOString().slice(0, 10);
-  }
-  if (/(yesterday)/.test(lower)) {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() - 1);
-    return d.toISOString().slice(0, 10);
-  }
   
   const months = [
     "january","february","march","april","may","june","july","august","september","october","november","december"
@@ -107,7 +60,7 @@ function parseNaturalDate(text?: string): string | undefined {
     }
   }
   
-  // Pattern 2: September 12, 2025, september 12th 2025
+  // Pattern 2: September 12th 2025, September 12 2025, september 12th 2025
   const m2 = lower.match(/(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?[,\s]+(\d{4})/);
   if (m2) {
     const monthIndex = months.indexOf(m2[1]);
@@ -118,34 +71,6 @@ function parseNaturalDate(text?: string): string | undefined {
       return d.toISOString().slice(0, 10);
     }
   }
-  
-  // Pattern 3: 2025 12 September, 2025 September 12, 2025 12th september
-  const m3 = lower.match(/(\d{4})\s+(\d{1,2})(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)/);
-  if (m3) {
-    const year = parseInt(m3[1], 10);
-    const day = parseInt(m3[2], 10);
-    const monthIndex = months.indexOf(m3[4]);
-    if (monthIndex >= 0) {
-      const d = new Date(Date.UTC(year, monthIndex, day));
-      return d.toISOString().slice(0, 10);
-    }
-  }
-  
-  // Pattern 4: 2025 September 12, 2025 september 12th
-  const m4 = lower.match(/(\d{4})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?/);
-  if (m4) {
-    const year = parseInt(m4[1], 10);
-    const monthIndex = months.indexOf(m4[2]);
-    const day = parseInt(m4[3], 10);
-    if (monthIndex >= 0) {
-      const d = new Date(Date.UTC(year, monthIndex, day));
-      return d.toISOString().slice(0, 10);
-    }
-  }
-  
-  // ISO-like: 2025-09-12
-  const iso = lower.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   
   return undefined;
 }
@@ -192,12 +117,11 @@ app.post("/api/rag", async (req, res) => {
       const imageUrl = apod.hdurl || apod.url || "";
       // Create a brief summary of APOD content (max 2 sentences)
       const briefSummary = apod.explanation.split('. ').slice(0, 2).join('. ') + '.';
-      nasaContext = `NASA APOD: ${apod.title} (${apod.date})\nImage: ${imageUrl}\nBrief: ${briefSummary}`;
+      nasaContext = `NASA APOD: ${apod.title} (${apod.date})\n${imageUrl ? `Image: ${imageUrl}` : 'Image: Not available yet'}\nBrief: ${briefSummary}`;
     }
 
     const mergedContext = [extraContext, nasaContext].filter(Boolean).join("\n\n");
     const answer = await ragFlow.run({ query, extraContext: mergedContext || undefined });
-    
     // Return only essential APOD info for display, not the full content
     const displayApod = apod ? {
       title: apod.title,
@@ -205,7 +129,7 @@ app.post("/api/rag", async (req, res) => {
       url: apod.url,
       hdurl: apod.hdurl
     } : undefined;
-    
+        
     res.json({ ok: true, answer, apod: displayApod });
   } catch (err: any) {
     res.status(400).json({ ok: false, error: err?.message || "Invalid request" });
